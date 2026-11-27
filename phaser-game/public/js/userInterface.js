@@ -1,5 +1,8 @@
-function setupUserInterface(game) {
+function setupUserInterface(game, spectator) {
     game.scoreText = game.add.text(16, 16, '', { fontSize: '18px', fill: 'white' })
+    game.connectionText = game.add.text(400, 60, '', { fontSize: '18px', fill: 'white' }).setOrigin(0.5)
+
+    if (spectator) return;
 
     game.playerNameLabel = game.add.text(300, 24, 'dd', { fontSize: '18px', fill: 'white' })
 

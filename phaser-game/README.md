@@ -15,6 +15,8 @@ See game running [http://localhost:8080](http://localhost:8080)
 - Start game via form [http://localhost:8080/start.html](http://localhost:8080/start.html)
 - Form send URL params to index.html e.g. ?username=testname&color=%23ff0000&lobby=testlobby
 - Players compete individually: each star is worth 10 points, and the leaderboard shows scores for players currently in the lobby.
+- After 60 seconds without a connection heartbeat, the player is disconnected. Unexpected disconnects retain the player and score for a 30-second reconnection grace period; connected players can remain stationary.
+- Select "Watch as spectator" on the start form, or add `spectator=true` to the game URL. Spectators have no ship or score and watch lobby updates without a player connection or inactivity timeout.
 
 ## Lobby creation
 Visit lobby creation endpoint to get new lobby id:   

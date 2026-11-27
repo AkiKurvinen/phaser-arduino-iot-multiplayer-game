@@ -39,11 +39,18 @@ const urlParams = new URLSearchParams(window.location.search);
 const username = urlParams.get('username') || default_usernames[Math.floor(Math.random() * default_usernames.length)];
 let color = urlParams.get('color') || default_colors[Math.floor(Math.random() * default_colors.length)];
 const lobby = urlParams.get('lobby') || 'default';
+const spectator = urlParams.get('spectator') === 'true';
 
 function create() {
-  this.controls = this.input.keyboard.createCursorKeys()
-
   this.otherPlayers = this.physics.add.group()
+  setupUserInterface(this, spectator)
+
+  if (spectator) {
+    setupSpectator(this, lobby)
+    return
+  }
+
+  this.controls = this.input.keyboard.createCursorKeys()
 
   // Pass extracted parameters to the socket connection
   this.socket = io('http://localhost:8080', {
@@ -54,11 +61,10 @@ function create() {
     }
   });
   setupSocketActions(this)
-  setupUserInterface(this)
 }
 
 function update() {
-  if (this.ship) {
+  if (this.ship && this.socket.connected) {
     if (this.controls.left.isDown) {
       this.ship.setAngularVelocity(-150)
     } else if (this.controls.right.isDown) {

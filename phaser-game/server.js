@@ -3,6 +3,8 @@ const app = express()
 const server = require('http').Server(app)
 const { Server } = require('socket.io');
 const io = new Server(server, {
+  pingTimeout: 60000,
+  connectionStateRecovery: { maxDisconnectionDuration: 30000 },
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
@@ -11,6 +13,8 @@ const io = new Server(server, {
 
 const GAMESIZE = { width: 800, height: 450 }
 const PORT = process.env.PORT || 8080
+const HEARTBEAT_TIMEOUT = 60000
+const RECONNECT_GRACE = 30000
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -41,6 +45,7 @@ const randomPos = () => ({
  * }
  */
 const games = {}
+const pendingRemovals = new Map()
 
 function createGame(code) {
   games[code] = {
@@ -95,11 +100,26 @@ app.get('/lobby/list', (req, res) => {
 app.get('/lobby/stats/:lobby', (req, res) => {
   const game = games[req.params.lobby];
   if (!game) return res.status(404).json({ error: 'Game not found' });
-  res.json({
+  res.json(lobbySnapshot(game));
+});
+
+function lobbySnapshot(game) {
+  return {
     code: game.code,
     players: Object.values(game.players),
     scores: game.scores,
     star: game.star,
+  };
+}
+
+app.get('/lobby/view/:lobby', (req, res) => {
+  const game = games[req.params.lobby];
+  if (game) return res.json(lobbySnapshot(game));
+  res.json({
+    code: req.params.lobby,
+    players: [],
+    scores: {},
+    star: null,
   });
 });
 
@@ -121,8 +141,22 @@ io.on('connection', socket => {
   }
 
   const game = getOrCreateGame(lobbyCode);
+  const pendingRemoval = pendingRemovals.get(socket.id);
+  if (pendingRemoval) {
+    clearTimeout(pendingRemoval);
+    pendingRemovals.delete(socket.id);
+  }
+  const heartbeatTimer = setTimeout(() => {
+    console.log(`${socket.id} disconnected after heartbeat timeout`);
+    socket.conn.close(true);
+  }, HEARTBEAT_TIMEOUT);
+  const onPacket = packet => {
+    if (packet.type === 'pong') heartbeatTimer.refresh();
+  };
+  socket.conn.on('packet', onPacket);
 
-  const player = {
+  const recoveredPlayer = socket.recovered && game.players[socket.id];
+  const player = recoveredPlayer || {
     rotation: 0,
     ...randomPos(),
     playerId: socket.id,
@@ -132,7 +166,9 @@ io.on('connection', socket => {
   };
 
   game.players[socket.id] = player;
-  game.scores[socket.id] = { username: player.username, score: 0 };
+  if (!recoveredPlayer) {
+    game.scores[socket.id] = { username: player.username, score: 0 };
+  }
 
   // Join the socket.io room for this lobby
   socket.join(lobbyCode);
@@ -144,15 +180,25 @@ io.on('connection', socket => {
   io.to(lobbyCode).emit('scoreUpdate', game.scores);
 
   // Notify everyone else in the lobby
-  socket.to(lobbyCode).emit('newPlayer', player);
+  if (!recoveredPlayer) socket.to(lobbyCode).emit('newPlayer', player);
 
   // ── Disconnect ────────────────────────────────────────────────────────────
 
-  socket.on('disconnect', () => {
-    console.log(`${socket.id} disconnected from lobby ${lobbyCode}`);
-    removePlayerFromGame(game, socket.id);
-    io.to(lobbyCode).emit('playerDisconnected', socket.id);
-    io.to(lobbyCode).emit('scoreUpdate', game.scores);
+  socket.on('disconnect', reason => {
+    clearTimeout(heartbeatTimer);
+    socket.conn.off('packet', onPacket);
+    console.log(`${socket.id} disconnected from lobby ${lobbyCode}: ${reason}`);
+    const removePlayer = () => {
+      pendingRemovals.delete(socket.id);
+      removePlayerFromGame(game, socket.id);
+      io.to(lobbyCode).emit('playerDisconnected', socket.id);
+      io.to(lobbyCode).emit('scoreUpdate', game.scores);
+    };
+    if (reason === 'client namespace disconnect' || reason === 'server namespace disconnect') {
+      removePlayer();
+    } else {
+      pendingRemovals.set(socket.id, setTimeout(removePlayer, RECONNECT_GRACE));
+    }
   });
 
   // ── Movement ──────────────────────────────────────────────────────────────
