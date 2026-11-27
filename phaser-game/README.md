@@ -14,6 +14,7 @@ See game running [http://localhost:8080](http://localhost:8080)
 ## Player customization
 - Start game via form [http://localhost:8080/start.html](http://localhost:8080/start.html)
 - Form send URL params to index.html e.g. ?username=testname&color=%23ff0000&lobby=testlobby
+- Players compete individually: each star is worth 10 points, and the leaderboard shows scores for players currently in the lobby.
 
 ## Lobby creation
 Visit lobby creation endpoint to get new lobby id:   
@@ -23,6 +24,7 @@ Visit lobby creation endpoint to get new lobby id:
 Visit lobby stats endpoint to show players in lobby:
 - [http://localhost:8080/lobby/stats/default](http://localhost:8080/lobby/stats/default)
 - Replace "default" with actual lobby id e.g. "ABCD"
+- Scores in the lobby list and stats responses are keyed by socket ID and contain each player's username and score.
 
 ## Controls
 ```

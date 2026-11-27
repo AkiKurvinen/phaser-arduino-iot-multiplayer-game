@@ -1,15 +1,14 @@
 function setupSocketActions(game) {
     game.socket.on('currentPlayers', players => {
+        addPlayer(game, players[game.socket.id]);
         Object.keys(players).forEach(id => {
-            players[id].playerId === game.socket.id
-                ? addPlayer(game, players[id])
-                : addOtherPlayers(game, players[id]);
+            if (id !== game.socket.id) addOtherPlayers(game, players[id]);
         });
     });
 
     game.socket.on('newPlayer', player => addOtherPlayers(game, player));
 
-    game.socket.on('disconnect', playerId => {
+    game.socket.on('playerDisconnected', playerId => {
         game.otherPlayers.getChildren().forEach(oPlayer => {
             if (playerId === oPlayer.playerId) {
                 oPlayer.destroy();
@@ -27,8 +26,10 @@ function setupSocketActions(game) {
     });
 
     game.socket.on('scoreUpdate', scores => {
-        game.blueScoreText.setText(`Blue: ${scores.blue}`);
-        game.redScoreText.setText(`Red: ${scores.red}`);
+        const leaderboard = Object.entries(scores)
+            .sort(([, a], [, b]) => b.score - a.score)
+            .map(([id, entry]) => `${entry.username}${id === game.socket.id ? ' (you)' : ''}: ${entry.score}`);
+        game.scoreText.setText(['Scores', ...leaderboard]);
     });
 
     game.socket.on('starLocation', starLocation => {
@@ -42,9 +43,8 @@ function setupSocketActions(game) {
     game.socket.on('playerColorUpdate', data => {
         const player = game.otherPlayers.getChildren().find(p => p.playerId === data.playerId);
         if (player) {
-            const glowColor = data.color;
-            player.preFX.clear(); // Clear existing effects
-            player.preFX.addGlow(glowColor, 4, 2, false); // Apply new glow
+            player.setTint(data.color);
+            if (player.playerGlow) player.playerGlow.color = data.color;
         }
     });
 }
@@ -54,13 +54,11 @@ function addPlayer(game, player) {
     game.ship = game.physics.add.image(player.x, player.y, 'ship')
         .setOrigin(0.5, 0.5)
         .setDisplaySize(53, 40);
-    player.team === 'blue'
-        ? game.ship.setTint(0x0000ff)
-        : game.ship.setTint(0xff0000);
+    game.ship.setTint(glowColor.color);
     game.ship.setDrag(100);
     game.ship.setAngularDrag(100);
     game.ship.setMaxVelocity(200);
-    game.ship.preFX.addGlow(glowColor.color, 4, 2, false);
+    addPlayerGlow(game.ship, glowColor.color);
     game.socket.emit('colorChange', { color: glowColor.color });
     game.playerColorLabel.fillStyle(glowColor.color, 1);
     game.playerColorLabel.fillRect(240, 26, 50, 10);
@@ -68,15 +66,22 @@ function addPlayer(game, player) {
 }
 
 function addOtherPlayers(game, oPlayer) {
+    const color = typeof oPlayer.color === 'number'
+        ? oPlayer.color
+        : Phaser.Display.Color.HexStringToColor(oPlayer.color).color;
     const otherPlayer = game.add.sprite(oPlayer.x, oPlayer.y, 'otherPlayer')
         .setOrigin(0.5, 0.5)
-        .setDisplaySize(53, 40);
-    oPlayer.team === 'blue'
-        ? otherPlayer.setTint(0x0000ff)
-        : otherPlayer.setTint(0xff0000);
+        .setDisplaySize(53, 40)
+        .setTint(color);
     otherPlayer.playerId = oPlayer.playerId;
     game.otherPlayers.add(otherPlayer);
-    console.log("color: " + oPlayer.color);
-    //const glowColor = Phaser.Display.Color.HexStringToColor(oPlayer.color);
-    otherPlayer.preFX.addGlow(oPlayer.color, 4, 2, false);
+    addPlayerGlow(otherPlayer, color);
+}
+
+function addPlayerGlow(player, color) {
+    player.enableFilters();
+    if (player.filters) {
+        player.playerGlow = player.filters.internal.addGlow(color, 4, 2);
+        player.playerGlow.setPaddingOverride(null);
+    }
 }

@@ -1,6 +1,5 @@
 function setupUserInterface(game) {
-    game.blueScoreText = game.add.text(16, 16, '', { fontSize: '32px', fill: 'blue' })
-    game.redScoreText = game.add.text(584, 16, '', { fontSize: '32px', fill: 'red' })
+    game.scoreText = game.add.text(16, 16, '', { fontSize: '18px', fill: 'white' })
 
     game.playerNameLabel = game.add.text(300, 24, 'dd', { fontSize: '18px', fill: 'white' })
 

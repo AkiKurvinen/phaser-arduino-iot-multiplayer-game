@@ -36,8 +36,7 @@ const randomPos = () => ({
  *     code: string,
  *     players: { [socketId]: PlayerObject },
  *     star: { x, y },
- *     scores: { blue: number, red: number },
- *     lastTeam: 'blue' | 'red',
+ *     scores: { [socketId]: { username: string, score: number } },
  *   }
  * }
  */
@@ -48,8 +47,7 @@ function createGame(code) {
     code,
     players: {},
     star: randomPos(),
-    scores: { blue: 0, red: 0 },
-    lastTeam: 'blue',
+    scores: {},
   };
   return games[code];
 }
@@ -60,6 +58,7 @@ function getOrCreateGame(code) {
 
 function removePlayerFromGame(game, socketId) {
   delete game.players[socketId];
+  delete game.scores[socketId];
   // Clean up empty lobbies
   if (Object.keys(game.players).length === 0) {
     delete games[game.code];
@@ -123,30 +122,26 @@ io.on('connection', socket => {
 
   const game = getOrCreateGame(lobbyCode);
 
-  // Assign team (alternate per join)
-  const team = game.lastTeam === 'blue' ? 'red' : 'blue';
-  game.lastTeam = team;
-
   const player = {
     rotation: 0,
     ...randomPos(),
     playerId: socket.id,
-    team,
     username: username || 'Anonymous',
     color: color || '#ffffff',
     lobby: lobbyCode,
   };
 
   game.players[socket.id] = player;
+  game.scores[socket.id] = { username: player.username, score: 0 };
 
   // Join the socket.io room for this lobby
   socket.join(lobbyCode);
-  console.log(`${username} (${socket.id}) joined lobby ${lobbyCode} as ${team}`);
+  console.log(`${player.username} (${socket.id}) joined lobby ${lobbyCode}`);
 
   // Bootstrap the joining player
   socket.emit('currentPlayers', game.players);
   socket.emit('starLocation', game.star);
-  socket.emit('scoreUpdate', game.scores);
+  io.to(lobbyCode).emit('scoreUpdate', game.scores);
 
   // Notify everyone else in the lobby
   socket.to(lobbyCode).emit('newPlayer', player);
@@ -157,6 +152,7 @@ io.on('connection', socket => {
     console.log(`${socket.id} disconnected from lobby ${lobbyCode}`);
     removePlayerFromGame(game, socket.id);
     io.to(lobbyCode).emit('playerDisconnected', socket.id);
+    io.to(lobbyCode).emit('scoreUpdate', game.scores);
   });
 
   // ── Movement ──────────────────────────────────────────────────────────────
@@ -175,8 +171,8 @@ io.on('connection', socket => {
   socket.on('starCollected', () => {
     const p = game.players[socket.id];
     if (!p) return;
-    console.log(`${p.team} collected star in lobby ${lobbyCode}`);
-    game.scores[p.team] += 10;
+    console.log(`${p.username} collected star in lobby ${lobbyCode}`);
+    game.scores[socket.id].score += 10;
     Object.assign(game.star, randomPos());
     io.to(lobbyCode).emit('starLocation', game.star);
     io.to(lobbyCode).emit('scoreUpdate', game.scores);
